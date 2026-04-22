@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Custom additions
+*.log
+*.class
+.env
+node_modules/
