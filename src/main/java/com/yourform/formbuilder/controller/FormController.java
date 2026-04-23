@@ -1,5 +1,8 @@
 package com.yourform.formbuilder.controller;
 
+import com.yourform.formbuilder.dto.AnalyticsDto;
+import com.yourform.formbuilder.dto.FilterRequest;
+
 //package com.example.formbuilder.controller;
 
 import com.yourform.formbuilder.model.Form;
@@ -38,4 +41,14 @@ public class FormController {
     public List<Question> getQuestions(@PathVariable Long id) {
         return service.getQuestions(id);
     }
+
+    @PostMapping("/filtered")
+    public List<Question> getFiltered(@RequestBody FilterRequest request) {
+    return service.getFilteredQuestions(request);
+}
+    @GetMapping("/analytics/{formId}")
+    public AnalyticsDto analytics(@PathVariable Long formId) {
+    return service.getAnalytics(formId);
+}
+
 }

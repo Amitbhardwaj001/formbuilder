@@ -15,6 +15,9 @@ public class Question {
 
     private String text;
     private String type; // TEXT or MCQ
+    
+    private Long conditionQuestionId;
+    private String conditionValue;
 
     @ManyToOne
     @JoinColumn(name = "form_id")
