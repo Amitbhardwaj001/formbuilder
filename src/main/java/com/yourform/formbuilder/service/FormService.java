@@ -2,6 +2,7 @@ package com.yourform.formbuilder.service;
 
 import com.yourform.formbuilder.dto.AnalyticsDto;
 import com.yourform.formbuilder.dto.FilterRequest;
+import com.yourform.formbuilder.dto.InsightDto;
 //import com.yourform.formbuilder.dto.FilterRequest;
 import com.yourform.formbuilder.model.*;
 import com.yourform.formbuilder.repository.*;
@@ -15,17 +16,20 @@ public class FormService {
 
     private final FormRepository formRepo;
     private final QuestionRepository questionRepo;
+    private final AiService aiService;
     //private final ResponseRepository responseRepo;   // ✅ added
     private final AnswerRepository answerRepo;       // ✅ added
 
     public FormService(FormRepository formRepo,
-                       QuestionRepository questionRepo,
-                       AnswerRepository answerRepo) {
+                   QuestionRepository questionRepo,
+                   AnswerRepository answerRepo,
+                   AiService aiService) {
 
         this.formRepo = formRepo;
         this.questionRepo = questionRepo;
         //this.responseRepo = responseRepo;   // ✅ added
-        this.answerRepo = answerRepo;       // ✅ added
+        this.answerRepo = answerRepo;
+        this.aiService = aiService;       // ✅ added
     }
 
     public Form createForm(Form form) {
@@ -117,6 +121,90 @@ public List<Question> getFilteredQuestions(FilterRequest request) {
     }
 
     return result;
+}
+public InsightDto generateInsights(Long formId) {
+
+    AnalyticsDto analytics = getAnalytics(formId);
+
+    List<String> insights = new ArrayList<>();
+
+    for (AnalyticsDto.QuestionAnalytics q : analytics.getQuestions()) {
+
+        Map<String, Long> answers = q.getAnswerCount();
+
+        long total = 0;
+        String topAnswer = null;
+        long max = 0;
+
+        long positive = 0;
+        long negative = 0;
+
+        for (Map.Entry<String, Long> entry : answers.entrySet()) {
+
+            total += entry.getValue();
+
+            if (entry.getValue() > max) {
+                max = entry.getValue();
+                topAnswer = entry.getKey();
+            }
+
+            String key = entry.getKey().toLowerCase();
+            long count = entry.getValue();
+
+            // ✅ sentiment classification
+            if (key.equals("yes") || key.equals("good") || key.equals("excellent")) {
+                positive += count;
+            } else if (key.equals("no") || key.equals("bad") || key.equals("poor")) {
+                negative += count;
+            }
+        }
+
+        if (topAnswer != null && total > 0) {
+
+            double percentage = (max * 100.0) / total;
+
+            String insight;
+
+            if (percentage > 70) {
+                insight = q.getQuestionText() + " → Strong trend: " + topAnswer + " (" + (int) percentage + "%)";
+            } else if (percentage > 40) {
+                insight = q.getQuestionText() + " → Moderate trend: " + topAnswer;
+            } else {
+                insight = q.getQuestionText() + " → Responses are diverse";
+            }
+
+            // ✅ improved sentiment logic
+            if (negative > positive) {
+                insight += " ⚠️ Overall negative feedback";
+            } else if (positive > negative) {
+                insight += " 😊 Overall positive feedback";
+            } else {
+                insight += " 😐 Mixed feedback";
+            }
+
+            insights.add(insight);
+        }
+    }
+
+    InsightDto dto = new InsightDto();
+    dto.setInsights(insights);
+
+    return dto;
+
+}
+
+public String generateAiSummary(Long formId) {
+
+    AnalyticsDto analytics = getAnalytics(formId);
+
+    String data = analytics.toString();
+
+    return aiService.generateSummary(data);
+}
+
+    public String generateAIQuestions(String topic) {
+    String prompt = "Generate 5 short survey questions for: " + topic;
+    return aiService.generateSummary(prompt);
 }
 
 }

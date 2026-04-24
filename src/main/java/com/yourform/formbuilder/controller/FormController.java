@@ -2,6 +2,7 @@ package com.yourform.formbuilder.controller;
 
 import com.yourform.formbuilder.dto.AnalyticsDto;
 import com.yourform.formbuilder.dto.FilterRequest;
+import com.yourform.formbuilder.dto.InsightDto;
 
 //package com.example.formbuilder.controller;
 
@@ -49,6 +50,18 @@ public class FormController {
     @GetMapping("/analytics/{formId}")
     public AnalyticsDto analytics(@PathVariable Long formId) {
     return service.getAnalytics(formId);
+}
+    @GetMapping("/insights/{formId}")
+    public InsightDto insights(@PathVariable Long formId) {
+    return service.generateInsights(formId);
+}
+    @GetMapping("/ai-summary/{formId}")
+    public String aiSummary(@PathVariable Long formId) {
+    return service.generateAiSummary(formId);
+}
+    @GetMapping("/ai-questions")
+    public String aiQuestions(@RequestParam String topic) {
+    return service.generateAIQuestions(topic);
 }
 
 }
