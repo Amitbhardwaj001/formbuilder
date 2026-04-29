@@ -1,6 +1,6 @@
 package com.yourform.formbuilder.service;
 import com.yourform.formbuilder.dto.QuestionResponseDto;
-
+import com.yourform.formbuilder.dto.SubmitRequest;
 import com.yourform.formbuilder.dto.AnalyticsDto;
 import com.yourform.formbuilder.dto.ChartDto;
 import com.yourform.formbuilder.dto.FilterRequest;
@@ -20,24 +20,36 @@ public class FormService {
     private final FormRepository formRepo;
     private final QuestionRepository questionRepo;
     private final AiService aiService;
-    //private final ResponseRepository responseRepo;   // ✅ added
-    private final AnswerRepository answerRepo;       // ✅ added
+    private final ResponseRepository responseRepo;   // ✅ added
+    private final AnswerRepository answerRepo; 
+    private final OptionRepository optionRepo;      // ✅ added
 
     public FormService(FormRepository formRepo,
                    QuestionRepository questionRepo,
                    AnswerRepository answerRepo,
-                   AiService aiService) {
+                   AiService aiService,
+                ResponseRepository responseRepo,
+                OptionRepository optionRepo) {
 
         this.formRepo = formRepo;
         this.questionRepo = questionRepo;
         //this.responseRepo = responseRepo;   // ✅ added
         this.answerRepo = answerRepo;
-        this.aiService = aiService;       // ✅ added
+        this.aiService = aiService; 
+        this.responseRepo = responseRepo; 
+        this.optionRepo = optionRepo;  // ✅ added
     }
 
     public Form createForm(Form form) {
-        return formRepo.save(form);
-    }
+
+    form.setShareToken(
+       UUID.randomUUID()
+           .toString()
+           .substring(0,8)
+    );
+
+    return formRepo.save(form);
+}
 
     public Question addQuestion(
         Question question) {
@@ -68,6 +80,8 @@ public class FormService {
         dto.setId(q.getId());
         dto.setText(q.getText());
         dto.setType(q.getType());
+        dto.setRequired(q.isRequired());
+        dto.setOptions(optionRepo.findByQuestionId(q.getId()));
 
         result.add(dto);
     }
@@ -314,6 +328,317 @@ public ChartDto getChartData(
  );
 
  return dto;
+}
+public Form getFormByToken(
+     String token){
+
+ return formRepo
+   .findByShareToken(token)
+   .orElseThrow(
+    ()->new RuntimeException(
+      "Form not found"
+    )
+   );
+}
+public String submitPublicForm(
+        String token,
+        SubmitRequest request) {
+
+    Form form =
+            formRepo.findByShareToken(token)
+                    .orElseThrow(() ->
+                        new RuntimeException(
+                           "Form not found"
+                        )
+                    );
+
+    // ✅ Required question validation
+    for (Question q :
+            questionRepo.findByFormId(
+                form.getId()
+            )) {
+
+        if (q.isRequired()) {
+
+            boolean answered =
+                    request.getAnswers()
+                           .stream()
+                           .anyMatch(a ->
+                              a.getQuestionId()
+                               .equals(q.getId())
+                              &&
+                              a.getAnswerText() != null
+                              &&
+                              !a.getAnswerText()
+                               .isBlank()
+                           );
+
+            if (!answered) {
+                throw new RuntimeException(
+                   q.getText() +
+                   " is required"
+                );
+            }
+        }
+    }
+
+    // save response only after validation passes
+    Response response =
+            new Response();
+
+    response.setForm(form);
+
+    responseRepo.save(response);
+
+
+    for (SubmitRequest.AnswerDto a
+            : request.getAnswers()) {
+
+        Question q =
+            questionRepo.findById(
+                a.getQuestionId()
+            ).orElseThrow();
+
+        Answer ans =
+             new Answer();
+
+        ans.setQuestion(q);
+        ans.setResponse(response);
+        ans.setAnswerText(
+             a.getAnswerText()
+        );
+
+        answerRepo.save(ans);
+    }
+
+    return "Public response submitted";
+}
+public String addOption(
+      Long questionId,
+      String text){
+
+   Question q =
+      questionRepo.findById(
+        questionId
+      ).orElseThrow();
+
+   Option option =
+      new Option();
+
+   option.setText(text); // because yours is text
+   option.setQuestion(q);
+
+   optionRepo.save(option);
+
+   return "Option added";
+}
+public List<Option> getOptions(
+        Long questionId){
+
+    return optionRepo
+           .findByQuestionId(
+              questionId
+           );
+}
+public Form cloneForm(Long formId){
+
+ Form original =
+    formRepo.findById(formId)
+       .orElseThrow();
+
+ Form copy = new Form();
+
+ copy.setTitle(
+    original.getTitle()
+    + " Copy"
+ );
+
+ copy.setDescription(
+    original.getDescription()
+ );
+
+ copy.setShareToken(
+   UUID.randomUUID()
+      .toString()
+      .substring(0,8)
+ );
+
+ formRepo.save(copy);
+
+ List<Question> questions =
+      questionRepo.findByFormId(
+         formId
+      );
+
+ for(Question q: questions){
+
+   Question newQ=
+      new Question();
+
+   newQ.setText(
+      q.getText()
+   );
+
+   newQ.setType(
+      q.getType()
+   );
+
+   newQ.setRequired(
+      q.isRequired()
+   );
+
+   newQ.setForm(copy);
+
+   questionRepo.save(newQ);
+
+   List<Option> options=
+      optionRepo.findByQuestionId(
+         q.getId()
+      );
+
+   for(Option op: options){
+
+      Option newOp=
+         new Option();
+
+      newOp.setText(
+          op.getText()
+      );
+
+      newOp.setQuestion(
+         newQ
+      );
+
+      optionRepo.save(
+         newOp
+      );
+   }
+
+ }
+
+ return copy;
+}
+
+public void updateOrder(
+Long id,
+Integer order){
+
+ Question q=
+   questionRepo.findById(id)
+    .orElseThrow();
+
+ q.setDisplayOrder(order);
+
+ questionRepo.save(q);
+}
+
+public Form createTemplate(
+      String type){
+
+   Form form =
+      new Form();
+
+   if(type.equalsIgnoreCase(
+       "feedback")){
+
+      form.setTitle(
+         "Customer Feedback"
+      );
+
+      form.setDescription(
+        "Feedback form template"
+      );
+
+      form.setShareToken(
+         UUID.randomUUID()
+          .toString()
+          .substring(0,8)
+      );
+
+      formRepo.save(form);
+
+
+      Question q1 =
+         new Question();
+
+      q1.setText(
+        "Are you satisfied?"
+      );
+
+      q1.setType("MCQ");
+
+      q1.setRequired(true);
+
+      q1.setForm(form);
+
+      questionRepo.save(q1);
+
+
+      Option o1=
+          new Option();
+
+      o1.setText("Yes");
+      o1.setQuestion(q1);
+
+      optionRepo.save(o1);
+
+
+      Option o2=
+         new Option();
+
+      o2.setText("No");
+      o2.setQuestion(q1);
+
+      optionRepo.save(o2);
+
+
+      Question q2=
+         new Question();
+
+      q2.setText(
+        "Suggestions?"
+      );
+
+      q2.setType("TEXT");
+
+      q2.setForm(form);
+
+      questionRepo.save(q2);
+
+   }
+
+   return form;
+}
+public List<Form> getForms(){
+    return formRepo.findAll();
+}
+public Question updateQuestion(
+Long id,
+Question updated){
+
+ Question q=
+ questionRepo.findById(id)
+ .orElseThrow();
+
+ q.setText(
+  updated.getText()
+ );
+
+ q.setType(
+  updated.getType()
+ );
+
+ q.setRequired(
+  updated.isRequired()
+ );
+
+ return questionRepo.save(q);
+}
+public void deleteQuestion(
+Long id){
+
+ questionRepo.deleteById(id);
+
 }
 
 }

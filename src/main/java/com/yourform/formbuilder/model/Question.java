@@ -23,8 +23,12 @@ public class Question {
     
     private Long conditionQuestionId;
     private String conditionValue;
+    private boolean required;
+    private Integer displayOrder;
 
     @ManyToOne
     @JoinColumn(name = "form_id")
     private Form form;
 }
+
+

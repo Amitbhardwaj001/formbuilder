@@ -1,6 +1,7 @@
 package com.yourform.formbuilder.model;
 
 import jakarta.persistence.*;
+import java.util.UUID;
 import lombok.*;
 
 @Entity
@@ -13,4 +14,5 @@ public class Form {
 
     private String title;
     private String description;
+    private String shareToken;
 }
