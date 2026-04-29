@@ -3,6 +3,8 @@ package com.yourform.formbuilder.model;
 //package com.example.formbuilder.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 @Entity
@@ -13,8 +15,11 @@ public class Question {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "Question text cannot be empty")
     private String text;
-    private String type; // TEXT or MCQ
+
+    @NotNull(message = "Question type is required")
+    private String type;// TEXT or MCQ
     
     private Long conditionQuestionId;
     private String conditionValue;

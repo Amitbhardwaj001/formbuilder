@@ -9,4 +9,5 @@ import java.util.List;
 
 public interface QuestionRepository extends JpaRepository<Question, Long> {
     List<Question> findByFormId(Long formId);
+    boolean existsByText(String text);
 }

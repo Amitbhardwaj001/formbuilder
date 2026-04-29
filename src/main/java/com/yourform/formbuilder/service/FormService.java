@@ -1,8 +1,11 @@
 package com.yourform.formbuilder.service;
+import com.yourform.formbuilder.dto.QuestionResponseDto;
 
 import com.yourform.formbuilder.dto.AnalyticsDto;
+import com.yourform.formbuilder.dto.ChartDto;
 import com.yourform.formbuilder.dto.FilterRequest;
 import com.yourform.formbuilder.dto.InsightDto;
+//import com.yourform.formbuilder.dto.QuestionResponseDto;
 //import com.yourform.formbuilder.dto.FilterRequest;
 import com.yourform.formbuilder.model.*;
 import com.yourform.formbuilder.repository.*;
@@ -36,13 +39,41 @@ public class FormService {
         return formRepo.save(form);
     }
 
-    public Question addQuestion(Question question) {
-        return questionRepo.save(question);
+    public Question addQuestion(
+        Question question) {
+
+    if(questionRepo.existsByText(
+            question.getText())) {
+
+        throw new RuntimeException(
+            "Question already exists");
     }
 
-    public List<Question> getQuestions(Long formId) {
-        return questionRepo.findByFormId(formId);
+    return questionRepo.save(question);
+}
+
+    public List<QuestionResponseDto> getQuestions(Long formId) {
+
+    List<Question> questions =
+            questionRepo.findByFormId(formId);
+
+    List<QuestionResponseDto> result =
+            new ArrayList<>();
+
+    for (Question q : questions) {
+
+        QuestionResponseDto dto =
+                new QuestionResponseDto();
+
+        dto.setId(q.getId());
+        dto.setText(q.getText());
+        dto.setType(q.getType());
+
+        result.add(dto);
     }
+
+    return result;
+}
 
     public Form getForm(Long id) {
         return formRepo.findById(id).orElseThrow();
@@ -205,6 +236,84 @@ public String generateAiSummary(Long formId) {
     public String generateAIQuestions(String topic) {
     String prompt = "Generate 5 short survey questions for: " + topic;
     return aiService.generateSummary(prompt);
+}
+public String exportCsv(Long formId){
+
+    List<Answer> answers =
+         answerRepo.findAll();
+
+    StringBuilder csv =
+         new StringBuilder();
+
+    csv.append(
+      "Question,Answer\n"
+    );
+
+    for(Answer a: answers){
+
+      if(a.getQuestion()
+         .getForm()
+         .getId()
+         .equals(formId)){
+
+        csv.append(
+          a.getQuestion().getText()
+        );
+
+        csv.append(",");
+
+        csv.append(
+          a.getAnswerText()
+        );
+
+        csv.append("\n");
+      }
+    }
+
+   return csv.toString();
+}
+public ChartDto getChartData(
+      Long formId){
+
+ Map<String,Long> counts=
+      new HashMap<>();
+
+ for(Answer a :
+      answerRepo.findAll()){
+
+   if(a.getQuestion()
+      .getForm()
+      .getId()
+      .equals(formId)){
+
+      String ans=
+        a.getAnswerText();
+
+      counts.put(
+       ans,
+       counts.getOrDefault(
+          ans,0L
+       )+1
+      );
+   }
+ }
+
+ ChartDto dto=
+     new ChartDto();
+
+ dto.setLabels(
+    new ArrayList<>(
+      counts.keySet()
+    )
+ );
+
+ dto.setValues(
+    new ArrayList<>(
+      counts.values()
+    )
+ );
+
+ return dto;
 }
 
 }

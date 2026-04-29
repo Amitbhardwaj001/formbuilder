@@ -1,8 +1,11 @@
 package com.yourform.formbuilder.controller;
 
 import com.yourform.formbuilder.dto.AnalyticsDto;
+import com.yourform.formbuilder.dto.ChartDto;
 import com.yourform.formbuilder.dto.FilterRequest;
 import com.yourform.formbuilder.dto.InsightDto;
+import com.yourform.formbuilder.dto.QuestionResponseDto;
+//import com.yourform.formbuilder.dto.QuestionResponseDto;
 
 //package com.example.formbuilder.controller;
 
@@ -10,6 +13,7 @@ import com.yourform.formbuilder.model.Form;
 import com.yourform.formbuilder.model.Question;
 import com.yourform.formbuilder.service.FormService;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -29,9 +33,11 @@ public class FormController {
     }
 
     @PostMapping("/question")
-    public Question addQuestion(@RequestBody Question question) {
-        return service.addQuestion(question);
-    }
+public Question addQuestion(
+        @Valid @RequestBody Question question) {
+
+    return service.addQuestion(question);
+}
 
     @GetMapping("/{id}")
     public Form getForm(@PathVariable Long id) {
@@ -39,9 +45,11 @@ public class FormController {
     }
 
     @GetMapping("/{id}/questions")
-    public List<Question> getQuestions(@PathVariable Long id) {
-        return service.getQuestions(id);
-    }
+public List<QuestionResponseDto> getQuestions(
+        @PathVariable Long id) {
+
+    return service.getQuestions(id);
+}
 
     @PostMapping("/filtered")
     public List<Question> getFiltered(@RequestBody FilterRequest request) {
@@ -62,6 +70,18 @@ public class FormController {
     @GetMapping("/ai-questions")
     public String aiQuestions(@RequestParam String topic) {
     return service.generateAIQuestions(topic);
+}
+@GetMapping("/export/{id}")
+public String exportCsv(
+      @PathVariable Long id){
+
+   return service.exportCsv(id);
+}
+@GetMapping("/chart/{id}")
+public ChartDto chart(
+   @PathVariable Long id){
+
+ return service.getChartData(id);
 }
 
 }
