@@ -17,8 +17,8 @@
     <groupId>com.yourform</groupId>
     <artifactId>formbuilder</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>formbuilder</name>
-    <description>AI Powered Form Builder</description>
+    <name>formix</name>
+    <description>AI Powered Formix Builder</description>
 
     <properties>
         <java.version>17</java.version>

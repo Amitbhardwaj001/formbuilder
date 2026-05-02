@@ -1,11 +1,14 @@
 package com.yourform.formbuilder.controller;
 
 import com.yourform.formbuilder.dto.SubmitRequest;
+import com.yourform.formbuilder.dto.QuestionResponseDto;
 import com.yourform.formbuilder.model.Form;
 import com.yourform.formbuilder.service.FormService;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 //import com.yourform.formbuilder.dto.SubmitRequest;
 
+@CrossOrigin(origins="http://localhost:3000")
 @RestController
 @RequestMapping("/public/forms")
 public class PublicFormController {
@@ -25,6 +28,15 @@ public class PublicFormController {
         token
    );
  }
+
+ @GetMapping("/{token}/questions")
+ public List<QuestionResponseDto> getSharedQuestions(
+    @PathVariable String token){
+
+   Form form = service.getFormByToken(token);
+   return service.getQuestions(form.getId());
+ }
+
  @PostMapping("/{token}/submit")
 public String submitPublicResponse(
       @PathVariable String token,

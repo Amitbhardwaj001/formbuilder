@@ -5,6 +5,7 @@ import java.util.List;
 public class SubmitRequest {
 
     private Long formId;
+    private String respondentEmail;
     private List<AnswerDto> answers;
 
     public static class AnswerDto {
@@ -42,5 +43,13 @@ public class SubmitRequest {
 
     public void setAnswers(List<AnswerDto> answers) {
         this.answers = answers;
+    }
+
+    public String getRespondentEmail() {
+        return respondentEmail;
+    }
+
+    public void setRespondentEmail(String respondentEmail) {
+        this.respondentEmail = respondentEmail;
     }
 }

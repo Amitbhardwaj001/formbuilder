@@ -11,7 +11,11 @@ import com.yourform.formbuilder.model.*;
 import com.yourform.formbuilder.repository.*;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -40,26 +44,99 @@ public class FormService {
         this.optionRepo = optionRepo;  // ✅ added
     }
 
-    public Form createForm(Form form) {
+    public Form createForm(Form form, String ownerUsername) {
 
     form.setShareToken(
        UUID.randomUUID()
            .toString()
            .substring(0,8)
     );
+    form.setOwnerUsername(ownerUsername);
 
     return formRepo.save(form);
 }
 
+public void assertFormOwner(Long formId, String ownerUsername) {
+   Form form = formRepo.findById(formId).orElseThrow();
+
+   if (form.getOwnerUsername() == null || !form.getOwnerUsername().equals(ownerUsername)) {
+      throw new ResponseStatusException(
+         HttpStatus.FORBIDDEN,
+         "You do not have access to this form"
+      );
+   }
+}
+
+public void assertQuestionOwner(Long questionId, String ownerUsername) {
+   Question question = questionRepo.findById(questionId).orElseThrow();
+   assertFormOwner(question.getForm().getId(), ownerUsername);
+}
+
+public void assertOptionOwner(Long optionId, String ownerUsername) {
+   Option option = optionRepo.findById(optionId).orElseThrow();
+   assertFormOwner(option.getQuestion().getForm().getId(), ownerUsername);
+}
+
+public Form updateForm(
+      Long id,
+      Form updated){
+
+   Form form =
+      formRepo.findById(id)
+        .orElseThrow();
+
+   form.setTitle(
+      updated.getTitle()
+   );
+
+   form.setDescription(
+      updated.getDescription()
+   );
+
+   form.setCollectEmail(updated.isCollectEmail());
+   form.setLimitOneResponsePerEmail(updated.isLimitOneResponsePerEmail());
+   form.setCloseAt(updated.getCloseAt());
+   form.setTimeLimitMinutes(updated.getTimeLimitMinutes());
+
+   return formRepo.save(form);
+}
+
+@Transactional
+public void deleteForm(Long id){
+   List<Response> responses =
+      responseRepo.findByFormId(id);
+
+   for(Response response: responses){
+      answerRepo.deleteByResponseId(
+         response.getId()
+      );
+   }
+
+   responseRepo.deleteAll(
+      responses
+   );
+
+   List<Question> questions =
+      questionRepo.findByFormId(id);
+
+   for(Question question: questions){
+      answerRepo.deleteByQuestionId(
+         question.getId()
+      );
+      optionRepo.deleteByQuestionId(
+         question.getId()
+      );
+   }
+
+   questionRepo.deleteAll(
+      questions
+   );
+
+   formRepo.deleteById(id);
+}
+
     public Question addQuestion(
         Question question) {
-
-    if(questionRepo.existsByText(
-            question.getText())) {
-
-        throw new RuntimeException(
-            "Question already exists");
-    }
 
     return questionRepo.save(question);
 }
@@ -81,6 +158,12 @@ public class FormService {
         dto.setText(q.getText());
         dto.setType(q.getType());
         dto.setRequired(q.isRequired());
+        dto.setConditionQuestionId(
+            q.getConditionQuestionId()
+        );
+        dto.setConditionValue(
+            q.getConditionValue()
+        );
         dto.setOptions(optionRepo.findByQuestionId(q.getId()));
 
         result.add(dto);
@@ -260,7 +343,7 @@ public String exportCsv(Long formId){
          new StringBuilder();
 
     csv.append(
-      "Question,Answer\n"
+      "Respondent Email,Submitted At,Question,Answer\n"
     );
 
     for(Answer a: answers){
@@ -270,16 +353,13 @@ public String exportCsv(Long formId){
          .getId()
          .equals(formId)){
 
-        csv.append(
-          a.getQuestion().getText()
-        );
-
+        csv.append(a.getResponse().getRespondentEmail() == null ? "" : a.getResponse().getRespondentEmail());
         csv.append(",");
-
-        csv.append(
-          a.getAnswerText()
-        );
-
+        csv.append(a.getResponse().getSubmittedAt());
+        csv.append(",");
+        csv.append(a.getQuestion().getText());
+        csv.append(",");
+        csv.append(a.getAnswerText());
         csv.append("\n");
       }
     }
@@ -352,6 +432,25 @@ public String submitPublicForm(
                         )
                     );
 
+    if (form.getCloseAt() != null && LocalDateTime.now().isAfter(form.getCloseAt())) {
+        throw new ResponseStatusException(HttpStatus.GONE, "This form is closed");
+    }
+
+    String respondentEmail = request.getRespondentEmail();
+
+    if ((form.isCollectEmail() || form.isLimitOneResponsePerEmail())
+            && (respondentEmail == null || respondentEmail.isBlank())) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
+    }
+
+    if (form.isLimitOneResponsePerEmail()
+            && responseRepo.existsByFormIdAndRespondentEmail(form.getId(), respondentEmail)) {
+        throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "This email has already submitted a response"
+        );
+    }
+
     // ✅ Required question validation
     for (Question q :
             questionRepo.findByFormId(
@@ -387,6 +486,7 @@ public String submitPublicForm(
             new Response();
 
     response.setForm(form);
+    response.setRespondentEmail(respondentEmail);
 
     responseRepo.save(response);
 
@@ -413,7 +513,7 @@ public String submitPublicForm(
 
     return "Public response submitted";
 }
-public String addOption(
+public Option addOption(
       Long questionId,
       String text){
 
@@ -430,7 +530,7 @@ public String addOption(
 
    optionRepo.save(option);
 
-   return "Option added";
+   return option;
 }
 public List<Option> getOptions(
         Long questionId){
@@ -440,11 +540,28 @@ public List<Option> getOptions(
               questionId
            );
 }
-public Form cloneForm(Long formId){
+
+public Option updateOption(
+      Long optionId,
+      Option updated){
+
+   Option option =
+      optionRepo.findById(optionId)
+        .orElseThrow();
+
+   option.setText(
+      updated.getText()
+   );
+
+   return optionRepo.save(option);
+}
+
+public Form cloneForm(Long formId, String ownerUsername){
 
  Form original =
     formRepo.findById(formId)
        .orElseThrow();
+ assertFormOwner(formId, ownerUsername);
 
  Form copy = new Form();
 
@@ -462,6 +579,7 @@ public Form cloneForm(Long formId){
       .toString()
       .substring(0,8)
  );
+ copy.setOwnerUsername(ownerUsername);
 
  formRepo.save(copy);
 
@@ -533,84 +651,376 @@ Integer order){
 }
 
 public Form createTemplate(
-      String type){
+      String type,
+      String ownerUsername){
+
+   String templateType =
+      type == null
+      ? "feedback"
+      : type.toLowerCase();
 
    Form form =
       new Form();
 
-   if(type.equalsIgnoreCase(
-       "feedback")){
+   form.setShareToken(
+      UUID.randomUUID()
+         .toString()
+         .substring(0,8)
+   );
+   form.setOwnerUsername(ownerUsername);
 
-      form.setTitle(
-         "Customer Feedback"
-      );
+   switch(templateType){
+      case "job_application":
+         form.setTitle("Job Application");
+         form.setDescription("Collect candidate details, resume uploads, and role preferences.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Full name", "TEXT", true);
+         addTemplateQuestion(form, "Email address", "TEXT", true);
+         addTemplateQuestion(form, "Phone number", "TEXT", true);
+         addTemplateQuestion(form, "Date of birth", "DATE", false);
+         addTemplateQuestion(form, "Position applied for", "DROPDOWN", true, "Frontend Developer", "Backend Developer", "Designer", "Marketing", "Other");
+         addTemplateQuestion(form, "Upload your resume", "FILE", true);
+         addTemplateQuestion(form, "Why should we hire you?", "TEXT", false);
+         break;
 
-      form.setDescription(
-        "Feedback form template"
-      );
+      case "event_registration":
+         form.setTitle("Event Registration");
+         form.setDescription("Register attendees and capture session preferences.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Full name", "TEXT", true);
+         addTemplateQuestion(form, "Email address", "TEXT", true);
+         addTemplateQuestion(form, "Ticket type", "DROPDOWN", true, "General", "VIP", "Student", "Speaker");
+         addTemplateQuestion(form, "Meal preference", "DROPDOWN", false, "Vegetarian", "Non-vegetarian", "Vegan", "No meal");
+         addTemplateQuestion(form, "Will you attend in person?", "MCQ", true, "Yes", "No");
+         addTemplateQuestion(form, "Any accessibility needs?", "TEXT", false);
+         break;
 
-      form.setShareToken(
-         UUID.randomUUID()
-          .toString()
-          .substring(0,8)
-      );
+      case "contact":
+         form.setTitle("Contact Form");
+         form.setDescription("Let visitors send enquiries or messages.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Name", "TEXT", true);
+         addTemplateQuestion(form, "Email", "TEXT", true);
+         addTemplateQuestion(form, "Subject", "TEXT", true);
+         addTemplateQuestion(form, "Reason for contact", "DROPDOWN", false, "Sales", "Support", "Partnership", "General");
+         addTemplateQuestion(form, "Message", "TEXT", true);
+         break;
 
-      formRepo.save(form);
+      case "student_admission":
+         form.setTitle("Student Admission");
+         form.setDescription("Collect student and guardian details for admissions.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Student full name", "TEXT", true);
+         addTemplateQuestion(form, "Date of birth", "DATE", true);
+         addTemplateQuestion(form, "Class applying for", "DROPDOWN", true, "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Other");
+         addTemplateQuestion(form, "Guardian name", "TEXT", true);
+         addTemplateQuestion(form, "Guardian phone number", "TEXT", true);
+         addTemplateQuestion(form, "Previous school", "TEXT", false);
+         break;
 
+      case "appointment":
+         form.setTitle("Appointment Request");
+         form.setDescription("Let people request a consultation or meeting slot.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Full name", "TEXT", true);
+         addTemplateQuestion(form, "Email or phone", "TEXT", true);
+         addTemplateQuestion(form, "Preferred date", "DATE", true);
+         addTemplateQuestion(form, "Appointment type", "DROPDOWN", true, "Consultation", "Follow-up", "Demo", "Support");
+         addTemplateQuestion(form, "Preferred time", "TEXT", false);
+         addTemplateQuestion(form, "Notes", "TEXT", false);
+         break;
 
-      Question q1 =
-         new Question();
+      case "support_ticket":
+         form.setTitle("Support Ticket");
+         form.setDescription("Track customer issues and support requests.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Name", "TEXT", true);
+         addTemplateQuestion(form, "Email", "TEXT", true);
+         addTemplateQuestion(form, "Issue category", "DROPDOWN", true, "Bug", "Billing", "Account", "Feature request", "Other");
+         addTemplateQuestion(form, "Priority", "DROPDOWN", true, "Low", "Medium", "High", "Urgent");
+         addTemplateQuestion(form, "Describe the issue", "TEXT", true);
+         addTemplateQuestion(form, "Attach screenshot or file", "FILE", false);
+         break;
 
-      q1.setText(
-        "Are you satisfied?"
-      );
+      case "product_order":
+         form.setTitle("Product Order");
+         form.setDescription("Collect simple product order requests.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Customer name", "TEXT", true);
+         addTemplateQuestion(form, "Phone number", "TEXT", true);
+         addTemplateQuestion(form, "Product", "TEXT", true);
+         addTemplateQuestion(form, "Quantity", "TEXT", true);
+         addTemplateQuestion(form, "Delivery address", "TEXT", true);
+         addTemplateQuestion(form, "Payment preference", "DROPDOWN", false, "Cash", "UPI", "Card", "Bank transfer");
+         break;
 
-      q1.setType("MCQ");
+      case "employee_onboarding":
+         form.setTitle("Employee Onboarding");
+         form.setDescription("Gather employee details and onboarding documents.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Employee full name", "TEXT", true);
+         addTemplateQuestion(form, "Date of joining", "DATE", true);
+         addTemplateQuestion(form, "Department", "DROPDOWN", true, "Engineering", "Sales", "HR", "Finance", "Operations");
+         addTemplateQuestion(form, "Emergency contact", "TEXT", true);
+         addTemplateQuestion(form, "Upload ID proof", "FILE", true);
+         addTemplateQuestion(form, "Laptop required?", "MCQ", false, "Yes", "No");
+         break;
 
-      q1.setRequired(true);
+      case "leave_request":
+         form.setTitle("Leave Request");
+         form.setDescription("Let employees request and explain leave.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Employee name", "TEXT", true);
+         addTemplateQuestion(form, "Leave type", "DROPDOWN", true, "Casual", "Sick", "Earned", "Work from home", "Other");
+         addTemplateQuestion(form, "Start date", "DATE", true);
+         addTemplateQuestion(form, "End date", "DATE", true);
+         addTemplateQuestion(form, "Reason", "TEXT", true);
+         addTemplateQuestion(form, "Manager name", "TEXT", false);
+         break;
 
-      q1.setForm(form);
+      case "customer_survey":
+         form.setTitle("Customer Survey");
+         form.setDescription("Understand customer satisfaction and preferences.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "How satisfied are you?", "DROPDOWN", true, "Very satisfied", "Satisfied", "Neutral", "Unsatisfied");
+         addTemplateQuestion(form, "How did you hear about us?", "DROPDOWN", false, "Search", "Social media", "Friend", "Advertisement", "Other");
+         addTemplateQuestion(form, "What did you like most?", "TEXT", false);
+         addTemplateQuestion(form, "What can we improve?", "TEXT", false);
+         addTemplateQuestion(form, "May we contact you?", "MCQ", false, "Yes", "No");
+         break;
 
-      questionRepo.save(q1);
+      case "newsletter":
+         form.setTitle("Newsletter Signup");
+         form.setDescription("Collect newsletter subscriptions and topic interests.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Name", "TEXT", false);
+         addTemplateQuestion(form, "Email address", "TEXT", true);
+         addTemplateQuestion(form, "Topics you like", "CHECKBOX", false, "Product updates", "Tutorials", "Events", "Offers");
+         addTemplateQuestion(form, "Preferred frequency", "DROPDOWN", false, "Weekly", "Monthly", "Only important updates");
+         break;
 
+      case "volunteer":
+         form.setTitle("Volunteer Registration");
+         form.setDescription("Register volunteers and understand availability.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Full name", "TEXT", true);
+         addTemplateQuestion(form, "Email or phone", "TEXT", true);
+         addTemplateQuestion(form, "Available days", "CHECKBOX", true, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Weekend");
+         addTemplateQuestion(form, "Area of interest", "DROPDOWN", false, "Teaching", "Operations", "Events", "Fundraising", "Other");
+         addTemplateQuestion(form, "Previous experience", "TEXT", false);
+         break;
 
-      Option o1=
-          new Option();
+      case "rental_application":
+         form.setTitle("Rental Application");
+         form.setDescription("Collect tenant details for property rentals.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Applicant name", "TEXT", true);
+         addTemplateQuestion(form, "Phone number", "TEXT", true);
+         addTemplateQuestion(form, "Move-in date", "DATE", true);
+         addTemplateQuestion(form, "Employment status", "DROPDOWN", true, "Employed", "Self-employed", "Student", "Other");
+         addTemplateQuestion(form, "Monthly income range", "DROPDOWN", false, "Below 25k", "25k-50k", "50k-1L", "Above 1L");
+         addTemplateQuestion(form, "Upload proof document", "FILE", false);
+         break;
 
-      o1.setText("Yes");
-      o1.setQuestion(q1);
+      case "project_request":
+         form.setTitle("Project Request");
+         form.setDescription("Capture project requirements from clients or teams.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Requester name", "TEXT", true);
+         addTemplateQuestion(form, "Project title", "TEXT", true);
+         addTemplateQuestion(form, "Project type", "DROPDOWN", true, "Website", "Mobile app", "Branding", "Automation", "Other");
+         addTemplateQuestion(form, "Expected deadline", "DATE", false);
+         addTemplateQuestion(form, "Budget range", "DROPDOWN", false, "Small", "Medium", "Large", "Not sure");
+         addTemplateQuestion(form, "Describe the project", "TEXT", true);
+         break;
 
-      optionRepo.save(o1);
-
-
-      Option o2=
-         new Option();
-
-      o2.setText("No");
-      o2.setQuestion(q1);
-
-      optionRepo.save(o2);
-
-
-      Question q2=
-         new Question();
-
-      q2.setText(
-        "Suggestions?"
-      );
-
-      q2.setType("TEXT");
-
-      q2.setForm(form);
-
-      questionRepo.save(q2);
-
+      default:
+         form.setTitle("Customer Feedback");
+         form.setDescription("Collect satisfaction, comments, and improvement ideas.");
+         formRepo.save(form);
+         addTemplateQuestion(form, "Are you satisfied?", "MCQ", true, "Yes", "No");
+         addTemplateQuestion(form, "Rate your experience", "DROPDOWN", true, "Excellent", "Good", "Average", "Poor");
+         addTemplateQuestion(form, "What did you like?", "TEXT", false);
+         addTemplateQuestion(form, "Suggestions?", "TEXT", false);
+         break;
    }
+
+   ensureMinimumTemplateQuestions(form, templateType);
 
    return form;
 }
-public List<Form> getForms(){
-    return formRepo.findAll();
+
+private void ensureMinimumTemplateQuestions(Form form, String templateType) {
+   int count = questionRepo.findByFormId(form.getId()).size();
+   List<String[]> extras = getTemplateExtraQuestions(templateType);
+
+   for (String[] extra : extras) {
+      if (count >= 10) {
+         return;
+      }
+
+      addTemplateQuestion(form, extra[0], extra[1], Boolean.parseBoolean(extra[2]),
+            Arrays.copyOfRange(extra, 3, extra.length));
+      count++;
+   }
+}
+
+private List<String[]> getTemplateExtraQuestions(String templateType) {
+   switch (templateType) {
+      case "job_application":
+         return List.of(
+            new String[]{"Current city", "TEXT", "false"},
+            new String[]{"Highest qualification", "DROPDOWN", "true", "High school", "Bachelor's", "Master's", "Diploma", "Other"},
+            new String[]{"Years of experience", "DROPDOWN", "true", "0-1", "2-4", "5-8", "9+"},
+            new String[]{"Notice period", "DROPDOWN", "false", "Immediate", "15 days", "30 days", "60+ days"},
+            new String[]{"LinkedIn or portfolio URL", "TEXT", "false"}
+         );
+      case "event_registration":
+         return List.of(
+            new String[]{"Organization", "TEXT", "false"},
+            new String[]{"Job title", "TEXT", "false"},
+            new String[]{"Sessions interested in", "CHECKBOX", "false", "Keynote", "Workshop", "Networking", "Panel"},
+            new String[]{"Need parking?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Emergency contact", "TEXT", "false"}
+         );
+      case "contact":
+         return List.of(
+            new String[]{"Phone number", "TEXT", "false"},
+            new String[]{"Company", "TEXT", "false"},
+            new String[]{"Preferred reply method", "DROPDOWN", "false", "Email", "Phone", "WhatsApp"},
+            new String[]{"How urgent is this?", "DROPDOWN", "false", "Low", "Medium", "High"},
+            new String[]{"Best time to contact", "TEXT", "false"}
+         );
+      case "student_admission":
+         return List.of(
+            new String[]{"Student email", "TEXT", "false"},
+            new String[]{"Address", "TEXT", "true"},
+            new String[]{"Gender", "DROPDOWN", "false", "Female", "Male", "Prefer not to say"},
+            new String[]{"Upload previous report card", "FILE", "false"},
+            new String[]{"Medical notes", "TEXT", "false"}
+         );
+      case "appointment":
+         return List.of(
+            new String[]{"Preferred mode", "DROPDOWN", "true", "In person", "Phone", "Video call"},
+            new String[]{"Alternate date", "DATE", "false"},
+            new String[]{"Location", "TEXT", "false"},
+            new String[]{"Have you visited before?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Attach related document", "FILE", "false"}
+         );
+      case "support_ticket":
+         return List.of(
+            new String[]{"Account ID", "TEXT", "false"},
+            new String[]{"Device or browser", "TEXT", "false"},
+            new String[]{"When did it start?", "DATE", "false"},
+            new String[]{"Can we contact you?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Steps to reproduce", "TEXT", "false"}
+         );
+      case "product_order":
+         return List.of(
+            new String[]{"Email address", "TEXT", "true"},
+            new String[]{"Preferred delivery date", "DATE", "false"},
+            new String[]{"Color or variant", "TEXT", "false"},
+            new String[]{"Need gift wrapping?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Order notes", "TEXT", "false"}
+         );
+      case "employee_onboarding":
+         return List.of(
+            new String[]{"Personal email", "TEXT", "true"},
+            new String[]{"Date of birth", "DATE", "false"},
+            new String[]{"Address", "TEXT", "true"},
+            new String[]{"Bank account details", "TEXT", "false"},
+            new String[]{"Upload signed offer letter", "FILE", "false"}
+         );
+      case "leave_request":
+         return List.of(
+            new String[]{"Employee ID", "TEXT", "true"},
+            new String[]{"Department", "TEXT", "false"},
+            new String[]{"Contact during leave", "TEXT", "false"},
+            new String[]{"Handover person", "TEXT", "false"},
+            new String[]{"Attach medical proof", "FILE", "false"}
+         );
+      case "customer_survey":
+         return List.of(
+            new String[]{"Your name", "TEXT", "false"},
+            new String[]{"Email", "TEXT", "false"},
+            new String[]{"Would you recommend us?", "MCQ", "true", "Yes", "No"},
+            new String[]{"Product used", "TEXT", "false"},
+            new String[]{"Permission to follow up?", "MCQ", "false", "Yes", "No"}
+         );
+      case "newsletter":
+         return List.of(
+            new String[]{"Company", "TEXT", "false"},
+            new String[]{"Role", "TEXT", "false"},
+            new String[]{"Country", "TEXT", "false"},
+            new String[]{"Consent to receive emails", "MCQ", "true", "Yes", "No"},
+            new String[]{"How did you find us?", "DROPDOWN", "false", "Search", "Social media", "Referral", "Other"},
+            new String[]{"Birthday", "DATE", "false"}
+         );
+      case "volunteer":
+         return List.of(
+            new String[]{"Age group", "DROPDOWN", "false", "Under 18", "18-25", "26-40", "41+"},
+            new String[]{"City", "TEXT", "true"},
+            new String[]{"Emergency contact", "TEXT", "true"},
+            new String[]{"Can travel?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Upload ID proof", "FILE", "false"}
+         );
+      case "rental_application":
+         return List.of(
+            new String[]{"Email", "TEXT", "true"},
+            new String[]{"Current address", "TEXT", "true"},
+            new String[]{"Number of occupants", "TEXT", "true"},
+            new String[]{"Pets?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Reference contact", "TEXT", "false"}
+         );
+      case "project_request":
+         return List.of(
+            new String[]{"Email", "TEXT", "true"},
+            new String[]{"Company", "TEXT", "false"},
+            new String[]{"Priority", "DROPDOWN", "false", "Low", "Medium", "High"},
+            new String[]{"Upload reference file", "FILE", "false"},
+            new String[]{"Decision maker", "TEXT", "false"}
+         );
+      default:
+         return List.of(
+            new String[]{"Name", "TEXT", "false"},
+            new String[]{"Email", "TEXT", "false"},
+            new String[]{"Would you recommend us?", "MCQ", "false", "Yes", "No"},
+            new String[]{"How often do you use our service?", "DROPDOWN", "false", "Daily", "Weekly", "Monthly", "Rarely"},
+            new String[]{"May we contact you?", "MCQ", "false", "Yes", "No"},
+            new String[]{"Upload supporting file", "FILE", "false"}
+         );
+   }
+}
+
+private Question addTemplateQuestion(
+      Form form,
+      String text,
+      String type,
+      boolean required,
+      String... options){
+
+   Question question =
+      new Question();
+
+   question.setText(text);
+   question.setType(type);
+   question.setRequired(required);
+   question.setForm(form);
+   questionRepo.save(question);
+
+   for(String optionText: options){
+      Option option =
+         new Option();
+
+      option.setText(optionText);
+      option.setQuestion(question);
+      optionRepo.save(option);
+   }
+
+   return question;
+}
+public List<Form> getForms(String ownerUsername){
+    return formRepo.findByOwnerUsername(ownerUsername);
 }
 public Question updateQuestion(
 Long id,
@@ -630,6 +1040,14 @@ Question updated){
 
  q.setRequired(
   updated.isRequired()
+ );
+
+ q.setConditionQuestionId(
+  updated.getConditionQuestionId()
+ );
+
+ q.setConditionValue(
+  updated.getConditionValue()
  );
 
  return questionRepo.save(q);

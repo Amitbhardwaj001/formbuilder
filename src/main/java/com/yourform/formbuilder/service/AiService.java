@@ -14,6 +14,9 @@ public class AiService {
     private String apiKey;
 
     public String generateSummary(String data) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "Gemini API key is not configured";
+        }
 
         RestTemplate restTemplate = new RestTemplate();
 

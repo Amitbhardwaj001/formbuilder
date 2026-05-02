@@ -13,6 +13,10 @@ public class QuestionResponseDto {
 
     private boolean required;
 
+    private Long conditionQuestionId;
+
+    private String conditionValue;
+
     private List<Option> options;
 
 
@@ -55,6 +59,28 @@ public class QuestionResponseDto {
        boolean required
     ){
        this.required=required;
+    }
+
+    public Long getConditionQuestionId() {
+        return conditionQuestionId;
+    }
+
+    public void setConditionQuestionId(
+       Long conditionQuestionId
+    ){
+       this.conditionQuestionId=conditionQuestionId;
+    }
+
+
+
+    public String getConditionValue() {
+        return conditionValue;
+    }
+
+    public void setConditionValue(
+      String conditionValue
+    ){
+      this.conditionValue=conditionValue;
     }
 
 

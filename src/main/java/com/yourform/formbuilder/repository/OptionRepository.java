@@ -11,4 +11,8 @@ extends JpaRepository<Option,Long>{
    List<Option> findByQuestionId(
        Long questionId
    );
+
+   void deleteByQuestionId(
+       Long questionId
+   );
 }

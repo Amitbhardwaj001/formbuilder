@@ -13,6 +13,7 @@ public class Response {
     private Long id;
 
     private LocalDateTime submittedAt = LocalDateTime.now();
+    private String respondentEmail;
 
     @ManyToOne
     @JoinColumn(name = "form_id")
