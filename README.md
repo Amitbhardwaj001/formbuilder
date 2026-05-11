@@ -17,7 +17,7 @@
 
 ## 🌐 Live Demo
 
-👉 https://your-deployed-link.com *(update after deployment)*
+👉  COMING SOON...
 
 ---
 
@@ -108,6 +108,7 @@ GEMINI_API_KEY=your_key
 ---
 
 ## 📸 Screenshots
+
 
 > 
 
