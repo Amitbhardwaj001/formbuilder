@@ -17,7 +17,7 @@
 
 ## 🌐 Live Demo
 
-👉  COMING SOON...
+👉 COMING SOON...
 
 ---
 
@@ -109,8 +109,28 @@ GEMINI_API_KEY=your_key
 
 ## 📸 Screenshots
 
+### 🔐 Login Page
+![Login Page](IMAGES/LOGINPAGE.png)
 
-> 
+---
+
+### 📝 Form Generate Page
+![Form Generate](IMAGES/FORMGENERATEPAGE.png)
+
+---
+
+### 📊 Dashboard
+![Dashboard](IMAGES/DASHBOARD.png)
+
+---
+
+### 📄 Response Page
+![Response Page](IMAGES/RESPONSEPAGE.png)
+
+---
+
+### ⚙️ Working Flow
+![Working](IMAGES/WORKING.png)
 
 ---
 
@@ -135,10 +155,10 @@ GEMINI_API_KEY=your_key
 
 ## 📊 Why This Project Stands Out
 
-✔ Real-world full-stack architecture
-✔ Production-ready configuration
-✔ Clean REST API design
-✔ Includes authentication + analytics + AI
+✔ Real-world full-stack architecture  
+✔ Production-ready configuration  
+✔ Clean REST API design  
+✔ Includes authentication + analytics + AI  
 ✔ Deployment-ready
 
 ---
@@ -155,8 +175,8 @@ GEMINI_API_KEY=your_key
 
 If you found this project useful:
 
-👉 Star the repo
-👉 Share it
+👉 Star the repo  
+👉 Share it  
 👉 Use it
 
 ---
